@@ -65,45 +65,52 @@ static ssize_t lux_show(struct device *dev, struct device_attribute *attr, char 
 static DEVICE_ATTR(lux, S_IRUGO, lux_show, NULL);
 
 static struct attribute *max44004_attributes[] = {
-	/*&dev_attr_range.attr,
+		/*&dev_attr_range.attr,
 	&dev_attr_resolution.attr,
 	&dev_attr_mode.attr,
 	&dev_attr_power_state.attr,*/
-	&dev_attr_lux.attr,
-	NULL
+		&dev_attr_lux.attr,
+		NULL
 };
 
 static const struct attribute_group max44004_attr_group = {
-	.attrs = max44004_attributes,
+		.attrs = max44004_attributes,
 };
 
 static struct i2c_device_id max44004_id[] = {
-	{"max44004", 0},
-	{}
+		{"max44004", 0},
+		{}
 };
 
 MODULE_DEVICE_TABLE(i2c, max44004_id);
 
 static int max44004_probe(struct i2c_client *client, const struct i2c_device_id *id){
-	printk(KERN_INFO "%s: probed max44004 module.\n");
+	int err = 0;
+	/* register sysfs hooks */
+	err = sysfs_create_group(&client->dev.kobj, &max44004_attr_group);
+	if (err){
+		printk(KERN_ERR "Error while creating sysfs hooks for max44004");
+	}
+
+	printk(KERN_INFO "Probed max44004 module.\n");
 	return 0;
 }
 
 static int max44004_remove(struct i2c_client *client){
 	sysfs_remove_group(&client->dev.kobj, &max44004_attr_group);
 
-	printk(KERN_INFO "%s: removed max44004 module.\n");
+	printk(KERN_INFO "Removed max44004 module.\n");
 	return 0;
 }
 
 static struct i2c_driver max44004_driver = {
-	.driver = {
-		.name = "max44004",
-		.owner	= THIS_MODULE,
-	},
-	.probe = max44004_probe,
-	.remove = max44004_remove,
-	.id_table = max44004_id,
+		.driver = {
+				.name = "max44004",
+				.owner	= THIS_MODULE,
+		},
+		.probe = max44004_probe,
+		.remove = max44004_remove,
+		.id_table = max44004_id,
 };
 
 module_i2c_driver(max44004_driver);
