@@ -64,6 +64,19 @@ static ssize_t lux_show(struct device *dev, struct device_attribute *attr, char 
 
 static DEVICE_ATTR(lux, S_IRUGO, lux_show, NULL);
 
+static struct attribute *max44004_attributes[] = {
+	/*&dev_attr_range.attr,
+	&dev_attr_resolution.attr,
+	&dev_attr_mode.attr,
+	&dev_attr_power_state.attr,*/
+	&dev_attr_lux.attr,
+	NULL
+};
+
+static const struct attribute_group max44004_attr_group = {
+	.attrs = max44004_attributes,
+};
+
 static struct i2c_device_id max44004_id[] = {
 	{"max44004", 0},
 	{}
@@ -72,12 +85,14 @@ static struct i2c_device_id max44004_id[] = {
 MODULE_DEVICE_TABLE(i2c, max44004_id);
 
 static int max44004_probe(struct i2c_client *client, const struct i2c_device_id *id){
-
-	printk(KERN_INFO "%s: no memory\n");
+	printk(KERN_INFO "%s: probed max44004 module.\n");
 	return 0;
 }
 
 static int max44004_remove(struct i2c_client *client){
+	sysfs_remove_group(&client->dev.kobj, &max44004_attr_group);
+
+	printk(KERN_INFO "%s: removed max44004 module.\n");
 	return 0;
 }
 
