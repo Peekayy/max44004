@@ -65,7 +65,7 @@ struct max44004_data {
 
 static int max44004_get_lux_value(struct i2c_client *client){
 	struct max44004_data *data = i2c_get_clientdata(client);
-	int lsb, msb, range, bitdepth;
+	int lsb, msb;
 
 	mutex_lock(&data->lock);
 	lsb = i2c_smbus_read_byte_data(client, MAX44004_DATA_LOW_BYTE);
@@ -110,11 +110,11 @@ static ssize_t status_show(struct device *dev, struct device_attribute *attr, ch
 
 static ssize_t config_show(struct device *dev, struct device_attribute *attr, char *buf){
 	struct i2c_client *client = to_i2c_client(dev);
-	int main = max44004_read_config_register(client, MAX44004_MAIN_CONFIG);
-	int receiver = max44004_read_config_register(client, MAX44004_RECEIVER_CONFIG);
-	char *mode, *alstim, *alspga;
+	int main_register = max44004_read_config_register(client, MAX44004_MAIN_CONFIG);
+	int receiver_register = max44004_read_config_register(client, MAX44004_RECEIVER_CONFIG);
+	char *mode = NULL, *alstim = NULL, *alspga = NULL;
 
-	switch(main & MAX44004_ALS_MODE_MASK){
+	switch(main_register & MAX44004_ALS_MODE_MASK){
 	case MAX44004_SENSORS_OFF:
 		mode = "SENSORS OFF";
 		break;
@@ -129,7 +129,7 @@ static ssize_t config_show(struct device *dev, struct device_attribute *attr, ch
 		break;
 	}
 
-	switch(receiver & MAX44004_ALS_CONVERSION_TIME_MASK){
+	switch(receiver_register & MAX44004_ALS_CONVERSION_TIME_MASK){
 	case MAX44004_ALS_CONVERSION_TIME_100:
 		alstim = "100ms";
 		break;
@@ -144,7 +144,7 @@ static ssize_t config_show(struct device *dev, struct device_attribute *attr, ch
 		break;
 	}
 
-	switch(receiver & MAX44004_ALS_GAIN_MASK){
+	switch(receiver_register & MAX44004_ALS_GAIN_MASK){
 	case MAX44004_ALS_GAIN_128:
 		alspga = "128x";
 		break;
@@ -160,7 +160,7 @@ static ssize_t config_show(struct device *dev, struct device_attribute *attr, ch
 	}
 
 
-	return sprintf(buf, "Main config register : 0x%X\nFlags :\n\tTRIM : %s\n\tMODE : %s\n\tALSINTE : %s\nReceiver config register: 0x%X\nFlags:\n\tALSTIM : %s\n\tALSPGA : %s\n", main, (main & 0x10)?"ON":"OFF", mode, (main & 0x1)?"ON":"OFF",receiver,alstim,alspga);
+	return sprintf(buf, "Main config register : 0x%X\nFlags :\n\tTRIM : %s\n\tMODE : %s\n\tALSINTE : %s\nReceiver config register: 0x%X\nFlags:\n\tALSTIM : %s\n\tALSPGA : %s\n", main_register, (main_register & 0x10)?"ON":"OFF", mode, (main_register & 0x1)?"ON":"OFF",receiver_register,alstim,alspga);
 }
 
 
