@@ -63,11 +63,31 @@ struct max44004_data {
 	struct mutex lock;
 };
 
+static float max44004_get_gain_factor(int gain_config){
+	float factor = 0.0f;
+	switch(gain_config){
+		case MAX44004_ALS_GAIN_1:
+			factor = 0.03125f;
+			break;
+		case MAX44004_ALS_GAIN_4:
+			factor = 0.125f;
+			break;
+		case MAX44004_ALS_GAIN_16:
+			factor = 0.5f;
+			break;
+		case MAX44004_ALS_GAIN_128:
+			factor = 4.0f;
+			break;
+	}
+	return factor;
+}
+
 static int max44004_get_lux_value(struct i2c_client *client){
 	struct max44004_data *data = i2c_get_clientdata(client);
-	int lsb, msb;
+	int lsb, msb,receiver_register;
 
 	mutex_lock(&data->lock);
+	receiver_register = i2c_smbus_read_byte_data(client, MAX44004_RECEIVER_CONFIG);
 	lsb = i2c_smbus_read_byte_data(client, MAX44004_DATA_LOW_BYTE);
 
 	if (lsb < 0) {
@@ -80,11 +100,12 @@ static int max44004_get_lux_value(struct i2c_client *client){
 
 	if (msb < 0)
 		return msb;
-
-	//range = isl29003_get_range(client);
-	//bitdepth = (4 - isl29003_get_resolution(client)) * 4;
-	msb = msb & MAX44004_OVERFLOW_BIT_MASK;
-	return (msb << 8) | lsb;
+		
+	if(msb & MAX44004_OVERFLOW){
+		return -1;
+	}else{
+		return (int)((msb << 8) | lsb ) * max44004_get_gain_factor(receiver_register & MAX44004_ALS_GAIN_MASK);
+	}
 }
 
 static ssize_t lux_show(struct device *dev, struct device_attribute *attr, char *buf){
@@ -93,19 +114,18 @@ static ssize_t lux_show(struct device *dev, struct device_attribute *attr, char 
 }
 
 static int max44004_read_config_register(struct i2c_client *client, int register_addr){
-	struct max44004_data *data = i2c_get_clientdata(client);
 	int status;
+	struct max44004_data *data = i2c_get_clientdata(client);
 	mutex_lock(&data->lock);
 	status = i2c_smbus_read_byte_data(client, register_addr);
 	mutex_unlock(&data->lock);
-
 	return status;
 }
 
 static ssize_t status_show(struct device *dev, struct device_attribute *attr, char *buf){
 	struct i2c_client *client = to_i2c_client(dev);
 	int status = max44004_read_config_register(client, MAX44004_INTERRUPT_STATUS);
-	return sprintf(buf, "Status register : 0x%X\nFlags :\n\tPWRON : %s\n\tALSINTS : %s", status, (status & 0x4)?"ON":"OFF", (status & 0x1)?"ON":"OFF");
+	return sprintf(buf, "Status register : 0x%X\nFlags :\n\tPWRON : %s\n\tALSINTS : %s\n", status, (status & 0x4)?"ON":"OFF", (status & 0x1)?"ON":"OFF");
 }
 
 static ssize_t config_show(struct device *dev, struct device_attribute *attr, char *buf){
@@ -200,6 +220,7 @@ static int max44004_probe(struct i2c_client *client, const struct i2c_device_id 
 
 	data->client = client;
 	i2c_set_clientdata(client, data);
+	mutex_init(&data->lock);
 
 
 	/* register sysfs hooks */
