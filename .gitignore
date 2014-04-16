@@ -1,3 +1,11 @@
 /.cproject
 /.project
 /.settings
+/.tmp_versions
+.*.*
+Module.symvers
+modules.order
+*.ko
+*.o
+*.mod.*
+max44004

@@ -63,31 +63,29 @@ struct max44004_data {
 	struct mutex lock;
 };
 
-static float max44004_get_gain_factor(int gain_config){
-	float factor = 0.0f;
-	switch(gain_config){
-		case MAX44004_ALS_GAIN_1:
-			factor = 0.03125f;
-			break;
-		case MAX44004_ALS_GAIN_4:
-			factor = 0.125f;
-			break;
-		case MAX44004_ALS_GAIN_16:
-			factor = 0.5f;
-			break;
-		case MAX44004_ALS_GAIN_128:
-			factor = 4.0f;
-			break;
-	}
-	return factor;
+static int max44004_read_config_register(struct i2c_client *client, int register_addr){
+	int status;
+	struct max44004_data *data = i2c_get_clientdata(client);
+	mutex_lock(&data->lock);
+	status = i2c_smbus_read_byte_data(client, register_addr);
+	mutex_unlock(&data->lock);
+	return status;
+}
+
+static int max44004_write_config_register(struct i2c_client *client, int register_addr, u8 value){
+	int ret = 0;
+	struct max44004_data *data = i2c_get_clientdata(client);
+	mutex_lock(&data->lock);
+	ret = i2c_smbus_write_byte_data(client, register_addr, value);
+	mutex_unlock(&data->lock);
+	return ret;
 }
 
 static int max44004_get_lux_value(struct i2c_client *client){
 	struct max44004_data *data = i2c_get_clientdata(client);
-	int lsb, msb,receiver_register;
+	int lsb, msb;
 
 	mutex_lock(&data->lock);
-	receiver_register = i2c_smbus_read_byte_data(client, MAX44004_RECEIVER_CONFIG);
 	lsb = i2c_smbus_read_byte_data(client, MAX44004_DATA_LOW_BYTE);
 
 	if (lsb < 0) {
@@ -104,7 +102,7 @@ static int max44004_get_lux_value(struct i2c_client *client){
 	if(msb & MAX44004_OVERFLOW){
 		return -1;
 	}else{
-		return (int)((msb << 8) | lsb ) * max44004_get_gain_factor(receiver_register & MAX44004_ALS_GAIN_MASK);
+		return (int)((msb << 8) | lsb );
 	}
 }
 
@@ -113,26 +111,16 @@ static ssize_t lux_show(struct device *dev, struct device_attribute *attr, char 
 	return sprintf(buf, "%d\n", max44004_get_lux_value(client));
 }
 
-static int max44004_read_config_register(struct i2c_client *client, int register_addr){
-	int status;
-	struct max44004_data *data = i2c_get_clientdata(client);
-	mutex_lock(&data->lock);
-	status = i2c_smbus_read_byte_data(client, register_addr);
-	mutex_unlock(&data->lock);
-	return status;
-}
-
 static ssize_t status_show(struct device *dev, struct device_attribute *attr, char *buf){
 	struct i2c_client *client = to_i2c_client(dev);
 	int status = max44004_read_config_register(client, MAX44004_INTERRUPT_STATUS);
-	return sprintf(buf, "Status register : 0x%X\nFlags :\n\tPWRON : %s\n\tALSINTS : %s\n", status, (status & 0x4)?"ON":"OFF", (status & 0x1)?"ON":"OFF");
+	return sprintf(buf, "0x%X\nStatus register :\n\tPWRON : %s\n\tALSINTS : %s\n", status, (status & 0x4)?"ON":"OFF", (status & 0x1)?"ON":"OFF");
 }
 
-static ssize_t config_show(struct device *dev, struct device_attribute *attr, char *buf){
+static ssize_t main_config_show(struct device *dev, struct device_attribute *attr, char *buf){
 	struct i2c_client *client = to_i2c_client(dev);
 	int main_register = max44004_read_config_register(client, MAX44004_MAIN_CONFIG);
-	int receiver_register = max44004_read_config_register(client, MAX44004_RECEIVER_CONFIG);
-	char *mode = NULL, *alstim = NULL, *alspga = NULL;
+	char *mode = NULL;
 
 	switch(main_register & MAX44004_ALS_MODE_MASK){
 	case MAX44004_SENSORS_OFF:
@@ -148,6 +136,31 @@ static ssize_t config_show(struct device *dev, struct device_attribute *attr, ch
 		mode = "SENSOR IR ONLY";
 		break;
 	}
+
+	return sprintf(buf, "0x%X\nMain config register :\n\tTRIM : %s\n\tMODE : %s\n\tALSINTE : %s\n", main_register, (main_register & 0x10)?"ON":"OFF", mode, (main_register & 0x1)?"ON":"OFF");
+}
+
+static ssize_t main_config_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count){
+	struct i2c_client *client = to_i2c_client(dev);
+	unsigned long val;
+	int ret;
+	
+	ret = kstrtoul(buf, 0, &val);
+	if (ret)
+		return ret;
+
+	if (val & 0xD2){ // 0b11010010
+		return -EINVAL;
+	}
+
+	ret = max44004_write_config_register(client, MAX44004_MAIN_CONFIG, (u8)val);
+	return ret ? ret : count;
+}
+
+static ssize_t receiver_config_show(struct device *dev, struct device_attribute *attr, char *buf){
+	struct i2c_client *client = to_i2c_client(dev);
+	int receiver_register = max44004_read_config_register(client, MAX44004_RECEIVER_CONFIG);
+	char *alstim = NULL, *alspga = NULL;
 
 	switch(receiver_register & MAX44004_ALS_CONVERSION_TIME_MASK){
 	case MAX44004_ALS_CONVERSION_TIME_100:
@@ -179,18 +192,35 @@ static ssize_t config_show(struct device *dev, struct device_attribute *attr, ch
 		break;
 	}
 
-
-	return sprintf(buf, "Main config register : 0x%X\nFlags :\n\tTRIM : %s\n\tMODE : %s\n\tALSINTE : %s\nReceiver config register: 0x%X\nFlags:\n\tALSTIM : %s\n\tALSPGA : %s\n", main_register, (main_register & 0x10)?"ON":"OFF", mode, (main_register & 0x1)?"ON":"OFF",receiver_register,alstim,alspga);
+	return sprintf(buf, "0x%X\nReceiver config register:\n\tALSTIM : %s\n\tALSPGA : %s\n", receiver_register,alstim,alspga);
 }
 
+static ssize_t receiver_config_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count){
+	struct i2c_client *client = to_i2c_client(dev);
+	unsigned long val;
+	int ret;
+	ret = kstrtoul(buf, 0, &val);
+	
+	if (ret)
+		return ret;
+
+	if (val & 0xF0){ // 0b11110000
+		return -EINVAL;
+	}
+
+	ret = max44004_write_config_register(client, MAX44004_RECEIVER_CONFIG, (u8)val);
+	return ret ? ret : count;
+}
 
 static DEVICE_ATTR(lux, S_IRUGO, lux_show, NULL);
 static DEVICE_ATTR(status, S_IRUGO, status_show, NULL);
-static DEVICE_ATTR(config, S_IRUGO, config_show, NULL);
+static DEVICE_ATTR(main_config, S_IWUSR | S_IRUGO, main_config_show, main_config_store);
+static DEVICE_ATTR(receiver_config, S_IWUSR | S_IRUGO, receiver_config_show, receiver_config_store);
 
 static struct attribute *max44004_attributes[] = {
 		&dev_attr_status.attr,
-		&dev_attr_config.attr,
+		&dev_attr_main_config.attr,
+		&dev_attr_receiver_config.attr,
 		&dev_attr_lux.attr,
 		NULL
 };
