@@ -200,7 +200,7 @@ static ssize_t receiver_config_store(struct device *dev, struct device_attribute
 	unsigned long val;
 	int ret;
 	ret = kstrtoul(buf, 0, &val);
-	
+
 	if (ret)
 		return ret;
 
