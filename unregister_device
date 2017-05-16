@@ -1,4 +1,0 @@
-#! /bin/bash
-
-echo "unregister max44004"
-echo 0x4a > /sys/bus/i2c/devices/i2c-0/delete_device
