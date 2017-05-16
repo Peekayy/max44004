@@ -1,0 +1,9 @@
+#! /bin/bash
+
+. unregister_device
+rmmod max44004
+cd ..
+make
+insmod max44004.ko
+cd tools
+. register_device

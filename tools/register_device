@@ -1,0 +1,4 @@
+#! /bin/bash
+
+echo "register max44004"
+echo max44004 0x4a > /sys/bus/i2c/devices/i2c-0/new_device
